@@ -5,6 +5,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,6 +24,12 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { ResourceCard } from "../components/ResourceCard";
 import { SkeletonCard } from "../components/SkeletonCard";
 import type { RootStackParamList } from "../navigation";
+import {
+  clearRecentResources,
+  getRecentResources,
+  recordRecentResource,
+} from "../services/recent";
+import type { RecentResource } from "../services/recent";
 import type { CatalogFilters, CatalogSort, Resource, VerificationStatus } from "../types";
 import { spacing } from "../theme";
 import type { ThemeColors } from "../theme";
@@ -265,6 +272,36 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "600",
       color: colors.primary,
     },
+    recentSection: {
+      gap: spacing.sm,
+    },
+    recentHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    recentRow: {
+      gap: spacing.sm,
+      paddingRight: spacing.lg,
+    },
+    recentItem: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      maxWidth: 220,
+    },
+    recentTitle: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    recentPrice: {
+      fontSize: 12,
+      color: colors.textMuted,
+    },
     apiHint: {
       fontSize: 11,
       color: colors.textSubtle,
@@ -387,6 +424,7 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [recent, setRecent] = useState<RecentResource[]>([]);
 
   useEffect(() => {
     async function restoreFilters() {
@@ -587,6 +625,12 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    // Recently viewed is a shortcut, not data the screen depends on: a failed
+    // read simply leaves the row hidden.
+    void getRecentResources().then(setRecent);
+  }, []);
+
   const hasActiveFilters =
     search.trim() !== "" ||
     verification !== DEFAULT_VERIFICATION ||
@@ -602,6 +646,24 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
     setMinPrice("");
     setMaxPrice("");
     setSort(DEFAULT_SORT);
+  }, []);
+
+  const openResource = useCallback(
+    (resource: RecentResource) => {
+      // Record first, so the row is already right when the user comes back.
+      void recordRecentResource({
+        id: resource.id,
+        title: resource.title,
+        price: resource.price,
+      }).then(setRecent);
+      navigation.navigate("ResourceDetail", { resourceId: resource.id });
+    },
+    [navigation],
+  );
+
+  const clearRecent = useCallback(() => {
+    setRecent([]);
+    void clearRecentResources();
   }, []);
 
   const priceRange = useMemo(
@@ -714,6 +776,43 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
               clearButtonMode="while-editing"
               accessibilityLabel="Search resources"
             />
+
+            {recent.length > 0 && search.trim() === "" ? (
+              <View style={styles.recentSection}>
+                <View style={styles.recentHeader}>
+                  <Text style={styles.filterLabel}>Recently viewed</Text>
+                  <Pressable
+                    onPress={clearRecent}
+                    style={styles.clearButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear recently viewed"
+                  >
+                    <Text style={styles.clearButtonText}>Clear</Text>
+                  </Pressable>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recentRow}
+                >
+                  {recent.map((entry) => (
+                    <Pressable
+                      key={entry.id}
+                      onPress={() => openResource(entry)}
+                      style={styles.recentItem}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open recently viewed ${entry.title}`}
+                      accessibilityHint="Opens the resource detail"
+                    >
+                      <Text style={styles.recentTitle} numberOfLines={1}>
+                        {entry.title}
+                      </Text>
+                      <Text style={styles.recentPrice}>{entry.price} USDC</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
 
             <View style={styles.filters}>
               <View style={styles.filterGroup}>
@@ -902,13 +1001,14 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
           </View>
         }
         renderItem={({ item }) => (
-          <ResourceCard
-            resource={item}
-            onCopyUrl={setToast}
-            onPress={() =>
-              navigation.navigate("ResourceDetail", { resourceId: item.id })
-            }
-          />
+          <Pressable
+            onPress={() => openResource(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${item.title}`}
+            accessibilityHint="Opens the resource detail"
+          >
+            <ResourceCard resource={item} onCopyUrl={setToast} />
+          </Pressable>
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={renderEmpty}

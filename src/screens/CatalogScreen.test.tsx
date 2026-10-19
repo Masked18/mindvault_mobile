@@ -4,9 +4,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { CatalogScreen } from "./CatalogScreen";
 import { fetchCatalog, fetchRegistryStatus, getApiBaseUrl } from "../api/resources";
+import {
+  clearRecentResources,
+  getRecentResources,
+  recordRecentResource,
+} from "../services/recent";
 import { ThemeProvider } from "../theme/ThemeProvider";
 
 jest.mock("../api/resources");
+jest.mock("../services/recent", () => ({
+  getRecentResources: jest.fn(),
+  recordRecentResource: jest.fn(),
+  clearRecentResources: jest.fn(),
+}));
 // The skeleton's looping animation keeps scheduling frames under fake timers,
 // which slows waitFor down enough to time out on CI. These tests only check
 // data flow, so render it as nothing.
@@ -25,6 +35,9 @@ const mockedFetchCatalog = fetchCatalog as jest.Mock;
 const mockedFetchRegistryStatus = fetchRegistryStatus as jest.Mock;
 const mockedGetApiBaseUrl = getApiBaseUrl as jest.Mock;
 const mockedGetItem = AsyncStorage.getItem as jest.Mock;
+const mockedGetRecentResources = getRecentResources as jest.Mock;
+const mockedRecordRecentResource = recordRecentResource as jest.Mock;
+const mockedClearRecentResources = clearRecentResources as jest.Mock;
 
 const navigation = { navigate: jest.fn() } as any;
 
@@ -48,6 +61,9 @@ beforeEach(() => {
   mockedFetchRegistryStatus.mockResolvedValue({ resourceCount: 0 });
   mockedGetApiBaseUrl.mockReturnValue("http://localhost:4000");
   mockedGetItem.mockResolvedValue(null);
+  mockedGetRecentResources.mockResolvedValue([]);
+  mockedRecordRecentResource.mockResolvedValue([]);
+  mockedClearRecentResources.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -390,6 +406,85 @@ describe("CatalogScreen infinite scroll pagination", () => {
 
     expect(screen.queryByText("Stale Page Item")).toBeNull();
     expect(screen.getByText("Showing 1 of 1 resource")).toBeTruthy();
+  });
+});
+
+describe("CatalogScreen recently viewed", () => {
+  it("records a view and opens the detail when a catalog resource is tapped", async () => {
+    mockedFetchCatalog.mockResolvedValue([makeResource("r9", "Vault item")]);
+    mockedRecordRecentResource.mockResolvedValue([
+      { id: "r9", title: "Vault item", price: "1.00" },
+    ]);
+
+    const screen = renderCatalog();
+    await waitFor(() => expect(screen.getByLabelText("Open Vault item")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Open Vault item"));
+    });
+
+    expect(mockedRecordRecentResource).toHaveBeenCalledWith({
+      id: "r9",
+      title: "Vault item",
+      price: "1.00",
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith("ResourceDetail", {
+      resourceId: "r9",
+    });
+    expect(screen.getByText("Recently viewed")).toBeTruthy();
+  });
+
+  it("opens the detail of a recently viewed resource", async () => {
+    mockedGetRecentResources.mockResolvedValue([
+      { id: "r7", title: "Seen earlier", price: "2.00" },
+    ]);
+
+    const screen = renderCatalog();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Open recently viewed Seen earlier")).toBeTruthy(),
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Open recently viewed Seen earlier"));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith("ResourceDetail", {
+      resourceId: "r7",
+    });
+  });
+
+  it("hides the row while searching", async () => {
+    mockedGetRecentResources.mockResolvedValue([
+      { id: "r7", title: "Seen earlier", price: "2.00" },
+    ]);
+
+    const screen = renderCatalog();
+    await waitFor(() => expect(screen.getByText("Recently viewed")).toBeTruthy());
+
+    fireEvent.changeText(screen.getByLabelText("Search resources"), "vault");
+
+    expect(screen.queryByText("Recently viewed")).toBeNull();
+  });
+
+  it("hides the row when nothing has been viewed", async () => {
+    const screen = renderCatalog();
+
+    await waitFor(() => expect(mockedFetchCatalog).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Recently viewed")).toBeNull();
+  });
+
+  it("clears the row", async () => {
+    mockedGetRecentResources.mockResolvedValue([
+      { id: "r7", title: "Seen earlier", price: "2.00" },
+    ]);
+
+    const screen = renderCatalog();
+    await waitFor(() => expect(screen.getByText("Recently viewed")).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText("Clear recently viewed"));
+
+    expect(mockedClearRecentResources).toHaveBeenCalled();
+    expect(screen.queryByText("Recently viewed")).toBeNull();
   });
 });
 
