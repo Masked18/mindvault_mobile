@@ -17,6 +17,7 @@ import {
   formatConfidence,
   type VerificationDetails,
 } from "../api/verification";
+import { StatusBadge } from "../components/StatusBadge";
 import type { RootStackParamList } from "../navigation";
 import type { Resource } from "../types";
 import { getResourceTypeLabel } from "../types";
@@ -31,30 +32,6 @@ type Props = NativeStackScreenProps<RootStackParamList, "ResourceDetail">;
 function shortenAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
-function verificationStyle(status: Resource["verificationStatus"], colors: ThemeColors) {
-  switch (status) {
-    case "verified":
-      return { backgroundColor: colors.successBg, color: colors.success };
-    case "rejected":
-      return { backgroundColor: colors.dangerBg, color: colors.danger };
-    default:
-      return { backgroundColor: colors.neutralBg, color: colors.textMuted };
-  }
-}
-
-function onchainStyle(status: Resource["onchainStatus"], colors: ThemeColors) {
-  switch (status) {
-    case "registered":
-      return { backgroundColor: colors.primaryMuted, color: colors.primary };
-    case "failed":
-      return { backgroundColor: colors.dangerBg, color: colors.danger };
-    case "pending":
-      return { backgroundColor: colors.warningBg, color: colors.warning };
-    default:
-      return { backgroundColor: colors.neutralBg, color: colors.textSubtle };
-  }
 }
 
 function formatTimestamp(value: string | undefined): string | null {
@@ -359,10 +336,6 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const verification = verificationStyle(resource.verificationStatus, colors);
-  const onchain = onchainStyle(resource.onchainStatus, colors);
-  const onchainLabel =
-    resource.onchainStatus === "none" ? "not on-chain" : resource.onchainStatus;
   const timestamp = getResourceTimestamp(resource);
 
   return (
@@ -382,24 +355,8 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
         ) : null}
 
         <View style={styles.badges}>
-          <View
-            style={[shared.badge, { backgroundColor: verification.backgroundColor }]}
-            accessibilityRole="text"
-            accessibilityLabel={`Verification: ${resource.verificationStatus}`}
-          >
-            <Text style={[shared.badgeText, { color: verification.color }]}>
-              {resource.verificationStatus}
-            </Text>
-          </View>
-          <View
-            style={[shared.badge, { backgroundColor: onchain.backgroundColor }]}
-            accessibilityRole="text"
-            accessibilityLabel={`On-chain: ${onchainLabel}`}
-          >
-            <Text style={[shared.badgeText, { color: onchain.color }]}>
-              {onchainLabel}
-            </Text>
-          </View>
+          <StatusBadge kind="verification" status={resource.verificationStatus} />
+          <StatusBadge kind="onchain" status={resource.onchainStatus} />
         </View>
 
         <Text style={[typography.price, styles.price]}>
