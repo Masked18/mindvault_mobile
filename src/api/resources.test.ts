@@ -1,5 +1,6 @@
 import {
   buildQuery,
+  delistResource,
   fetchCatalog,
   fetchPublisherResources,
   fetchResource,
@@ -353,6 +354,23 @@ describe('publisher transaction endpoints', () => {
     mockFetch({ error: `bad key ${API_KEY}`, apiKey: API_KEY }, 500);
 
     await expect(submitPriceEdit('r1', 'SIGNED', '1')).rejects.not.toThrow(API_KEY);
+  });
+
+  it('delistResource sends a DELETE without a body and accepts an empty 204', async () => {
+    const fetchMock = mockFetch({}, 204);
+
+    await expect(delistResource('res 1')).resolves.toBeUndefined();
+    expectRequest(fetchMock, '/resources/res%201', 'DELETE');
+  });
+
+  it('delistResource surfaces the server message for 403 and 404', async () => {
+    mockFetch({ error: 'Forbidden: you do not own this resource' }, 403);
+    await expect(delistResource('r1')).rejects.toThrow(
+      'Forbidden: you do not own this resource'
+    );
+
+    mockFetch({ error: 'Resource not found' }, 404);
+    await expect(delistResource('r1')).rejects.toThrow('Resource not found');
   });
 });
 

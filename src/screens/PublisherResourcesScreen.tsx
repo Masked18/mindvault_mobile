@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -16,6 +17,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import {
   deleteStoredApiKey,
+  delistResource,
   fetchPublisherResources,
   getApiBaseUrl,
   getStoredApiKey,
@@ -59,6 +61,10 @@ export function PublisherResourcesScreen() {
   const [transferResource, setTransferResource] = useState<Resource | null>(null);
   /** Issue #204: the resource currently open in the RegisterModal, or null */
   const [registerResource, setRegisterResource] = useState<Resource | null>(null);
+  /** Issue #220: the resource awaiting delist confirmation, or null */
+  const [delistTarget, setDelistTarget] = useState<Resource | null>(null);
+  const [delisting, setDelisting] = useState(false);
+  const [delistError, setDelistError] = useState<string | null>(null);
 
   const styles = useMemo(() => {
     return StyleSheet.create({
@@ -270,6 +276,40 @@ export function PublisherResourcesScreen() {
         fontSize: 14,
         fontWeight: "500",
       },
+      modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "center",
+        padding: spacing.lg,
+      },
+      modalCard: {
+        backgroundColor: colors.surface,
+        borderRadius: 20,
+        padding: spacing.lg,
+        gap: spacing.md,
+      },
+      modalBody: {
+        color: colors.textMuted,
+      },
+      modalActions: {
+        flexDirection: "row",
+        gap: spacing.sm,
+        marginTop: spacing.sm,
+      },
+      modalCancelButton: {
+        flex: 1,
+        backgroundColor: colors.neutralBg,
+        alignItems: "center",
+      },
+      modalCancelText: {
+        color: colors.text,
+        fontWeight: "600",
+      },
+      modalConfirmButton: {
+        flex: 1,
+        backgroundColor: colors.danger,
+        alignItems: "center",
+      },
     });
   }, [colors]);
 
@@ -451,6 +491,43 @@ export function PublisherResourcesScreen() {
     setToast(message);
   }, []);
 
+  /**
+   * Issue #220: Open the delist confirmation for the given resource.
+   */
+  const handleOpenDelist = useCallback((resource: Resource) => {
+    setDelistError(null);
+    setDelistTarget(resource);
+  }, []);
+
+  const handleCloseDelist = useCallback(() => {
+    setDelistTarget(null);
+    setDelistError(null);
+  }, []);
+
+  /**
+   * Issue #220: Delist the resource, then drop it from the local list. The
+   * modal stays open on failure so the server message stays visible.
+   */
+  const handleConfirmDelist = useCallback(async () => {
+    const target = delistTarget;
+    if (!target) return;
+
+    setDelisting(true);
+    setDelistError(null);
+
+    try {
+      await delistResource(target.id);
+      setResources((prev) => prev.filter((r) => r.id !== target.id));
+      setDelistTarget(null);
+      setToast("Resource delisted");
+    } catch (err) {
+      logError("publisherResources.delist", err);
+      setDelistError(err instanceof Error ? err.message : "Failed to delist resource");
+    } finally {
+      setDelisting(false);
+    }
+  }, [delistTarget]);
+
   const filteredResources = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return resources;
@@ -623,6 +700,7 @@ export function PublisherResourcesScreen() {
             onPriceUpdated={handlePriceUpdated}
             onTransferOwnership={handleOpenTransfer}
             onRegister={handleOpenRegister}
+            onDelist={handleOpenDelist}
           />
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -666,6 +744,60 @@ export function PublisherResourcesScreen() {
           onError={handleRegisterError}
         />
       ) : null}
+
+      <Modal
+        visible={delistTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseDelist}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard} testID="delist-modal">
+            <Text style={typography.title}>Delist resource?</Text>
+            <Text style={[typography.body, styles.modalBody]}>
+              {delistTarget?.title} will no longer be listed in the public catalog.
+            </Text>
+
+            {delistError ? (
+              <Text style={styles.errorText} accessibilityRole="alert">
+                {delistError}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={handleCloseDelist}
+                disabled={delisting}
+                style={[shared.button, styles.modalCancelButton]}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel delist"
+                accessibilityState={{ disabled: delisting }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void handleConfirmDelist()}
+                disabled={delisting}
+                style={[
+                  shared.button,
+                  styles.modalConfirmButton,
+                  delisting ? styles.disabledButton : null,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm delist"
+                accessibilityHint="Removes this resource from the public catalog"
+                accessibilityState={{ disabled: delisting, busy: delisting }}
+              >
+                {delisting ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={shared.buttonText}>Delist</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 

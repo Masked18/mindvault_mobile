@@ -27,6 +27,8 @@ interface ResourceCardProps {
   onPriceUpdated?: (resourceId: string, newPrice: string) => void;
   /** Called when the user taps "Transfer Ownership" */
   onTransferOwnership?: (resource: Resource) => void;
+  /** Called when the user taps "Delist" */
+  onDelist?: (resource: Resource) => void;
 }
 
 function shortenAddress(address: string): string {
@@ -66,6 +68,7 @@ export function ResourceCard({
   editablePrice = false,
   onPriceUpdated,
   onTransferOwnership,
+  onDelist,
 }: ResourceCardProps) {
   const { colors, shared, typography } = useAppTheme();
   const verification = verificationStyle(resource.verificationStatus, colors);
@@ -135,6 +138,13 @@ export function ResourceCard({
         registerButton: {
           backgroundColor: colors.neutralBg,
           marginTop: 8,
+        },
+        delistButton: {
+          backgroundColor: colors.dangerBg,
+          marginTop: 8,
+        },
+        delistButtonText: {
+          color: colors.danger,
         },
       }),
     [colors]
@@ -268,7 +278,7 @@ export function ResourceCard({
         </View>
       </View>
 
-      {editablePrice || canRegister || onTransferOwnership ? (
+      {editablePrice || canRegister || onTransferOwnership || onDelist ? (
         editing ? (
           <View style={styles.editor}>
             <TextInput
@@ -406,6 +416,18 @@ export function ResourceCard({
                 accessibilityHint="Opens the ownership transfer flow for this resource"
               >
                 <Text style={shared.buttonText}>Transfer Ownership</Text>
+              </Pressable>
+            ) : null}
+
+            {onDelist ? (
+              <Pressable
+                onPress={() => onDelist(resource)}
+                style={[shared.button, dynamicStyles.delistButton]}
+                accessibilityRole="button"
+                accessibilityLabel={`Delist ${resource.title}`}
+                accessibilityHint="Opens a confirmation before removing this resource from the catalog"
+              >
+                <Text style={[shared.buttonText, dynamicStyles.delistButtonText]}>Delist</Text>
               </Pressable>
             ) : null}
           </View>

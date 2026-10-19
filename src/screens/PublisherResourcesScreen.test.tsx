@@ -3,6 +3,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 import { PublisherResourcesScreen } from "./PublisherResourcesScreen";
 import {
+  delistResource,
   fetchPublisherResources,
   getStoredApiKey,
 } from "../api/resources";
@@ -10,6 +11,7 @@ import type { Resource } from "../types";
 
 jest.mock("../api/resources", () => ({
   fetchPublisherResources: jest.fn(),
+  delistResource: jest.fn(),
   getStoredApiKey: jest.fn(),
   storeApiKey: jest.fn(),
   deleteStoredApiKey: jest.fn(),
@@ -112,6 +114,7 @@ const mockedGetStoredApiKey = getStoredApiKey as jest.MockedFunction<typeof getS
 const mockedFetchPublisherResources = fetchPublisherResources as jest.MockedFunction<
   typeof fetchPublisherResources
 >;
+const mockedDelistResource = delistResource as jest.MockedFunction<typeof delistResource>;
 
 function createResource(overrides: Partial<Resource>): Resource {
   return {
@@ -285,5 +288,64 @@ describe("PublisherResourcesScreen - Register on-chain", () => {
 
     await waitFor(() => expect(screen.queryByTestId("register-modal")).toBeNull());
     expect(screen.getByLabelText("On-chain: not on-chain")).toBeTruthy();
+  });
+});
+
+describe("PublisherResourcesScreen - Delist", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedGetStoredApiKey.mockResolvedValue("stored-test-key");
+  });
+
+  it("asks for confirmation first and keeps the resource when cancelled", async () => {
+    const res = createResource({ id: "res-delist", title: "Old Whitepaper" });
+    mockedFetchPublisherResources.mockResolvedValue([res]);
+
+    const screen = render(<PublisherResourcesScreen />);
+
+    fireEvent.press(await screen.findByLabelText(`Delist ${res.title}`));
+
+    expect(screen.getByTestId("delist-modal")).toBeTruthy();
+    expect(mockedDelistResource).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("Cancel delist"));
+
+    await waitFor(() => expect(screen.queryByTestId("delist-modal")).toBeNull());
+    expect(mockedDelistResource).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(`Delist ${res.title}`)).toBeTruthy();
+  });
+
+  it("delists the resource and removes it from the list", async () => {
+    const res = createResource({ id: "res-delist", title: "Old Whitepaper" });
+    mockedFetchPublisherResources.mockResolvedValue([res]);
+    mockedDelistResource.mockResolvedValue(undefined);
+
+    const screen = render(<PublisherResourcesScreen />);
+
+    fireEvent.press(await screen.findByLabelText(`Delist ${res.title}`));
+    fireEvent.press(screen.getByLabelText("Confirm delist"));
+
+    expect(await screen.findByText("Resource delisted")).toBeTruthy();
+    expect(mockedDelistResource).toHaveBeenCalledWith("res-delist");
+
+    await waitFor(() => expect(screen.queryByTestId("delist-modal")).toBeNull());
+    expect(screen.queryByText(res.title)).toBeNull();
+  });
+
+  it("keeps the resource and shows the server message when delisting fails", async () => {
+    const res = createResource({ id: "res-delist", title: "Old Whitepaper" });
+    mockedFetchPublisherResources.mockResolvedValue([res]);
+    mockedDelistResource.mockRejectedValue(
+      new Error("Forbidden: you do not own this resource")
+    );
+
+    const screen = render(<PublisherResourcesScreen />);
+
+    fireEvent.press(await screen.findByLabelText(`Delist ${res.title}`));
+    fireEvent.press(screen.getByLabelText("Confirm delist"));
+
+    expect(await screen.findByText("Forbidden: you do not own this resource")).toBeTruthy();
+    expect(screen.getByTestId("delist-modal")).toBeTruthy();
+    expect(screen.getByLabelText(`Delist ${res.title}`)).toBeTruthy();
   });
 });

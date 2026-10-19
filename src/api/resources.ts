@@ -191,7 +191,7 @@ export async function fetchRegistryStatus(): Promise<RegistryStatus> {
  */
 async function publisherFetch<T>(
   path: string,
-  init: { method: "GET" | "POST"; body?: unknown },
+  init: { method: "GET" | "POST" | "DELETE"; body?: unknown },
   fallbackMessage: string
 ): Promise<T> {
   const apiKey = await getApiKey();
@@ -218,6 +218,10 @@ async function publisherFetch<T>(
     );
     // Never let a server that echoes the key leak it into the UI.
     throw new Error(message.split(apiKey).join("[redacted]"));
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
   }
 
   return res.json();
@@ -329,6 +333,18 @@ export function submitOwnershipTransfer(
     resourcePath(resourceId, "ownership"),
     { method: "POST", body: { signedXdr, newCreator } },
     "Failed to submit ownership transfer"
+  );
+}
+
+/**
+ * Delists a resource so it stops showing up in the public catalog.
+ * `DELETE /resources/:id` — the server only allows the resource owner.
+ */
+export function delistResource(resourceId: string): Promise<void> {
+  return publisherFetch<void>(
+    `/resources/${encodeURIComponent(resourceId)}`,
+    { method: "DELETE" },
+    "Failed to delist resource"
   );
 }
 
